@@ -19,6 +19,13 @@ async function fetchWithTimeout(url, ms = 20000) {
   } finally { clearTimeout(t); }
 }
 
+function decodeEntities(s) {
+  return String(s || '')
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(n));
+}
+
 function stripHtml(html) {
   if (!html) return '';
   return String(html)
@@ -94,7 +101,62 @@ async function fetchLever(slug) {
   return out;
 }
 
-/* ---------- Generic JSON-LD career page scraper ---------- */
+/* ---------- Generic JSON-LD career-page crawler ---------- */
+function extractDetailLinks(html, baseUrl) {
+  const found = new Map();
+  const origin = new URL(baseUrl).origin;
+  const re = /<a[^>]*href=["']([^"'#]+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    let href = m[1];
+    const text = stripHtml(m[2]).trim();
+    if (/^(mailto:|tel:|javascript:|data:)/i.test(href)) continue;
+    let u;
+    try { u = new URL(href, baseUrl); } catch { continue; }
+    if (u.origin !== origin) continue;
+    if (u.href.replace(/\/$/, '') === baseUrl.replace(/\/$/, '')) continue;
+    const path = u.pathname.toLowerCase();
+    const pathHit = /\/(job|jobs|career|careers|opening|openings|position|positions|vacanc\w*|requirement\w*|role|roles|hiring|apply)(\/|$|-|_)/i.test(path);
+    const textHit = text.length >= 8 && text.length <= 90 && /\s/.test(text) && /[a-z]/i.test(text)
+      && !/^(about|contact|blog|faq|press|privacy|terms|home|login|sign|learn more|read more|apply now|see all|view all|back)/i.test(text);
+    if (pathHit || textHit) found.set(u.href, text);
+  }
+  return [...found.keys()];
+}
+
+async function mapLimited(items, limit, fn) {
+  const results = [];
+  for (let i = 0; i < items.length; i += limit) {
+    results.push(...await Promise.all(items.slice(i, i + limit).map(fn)));
+  }
+  return results;
+}
+
+/**
+ * Fetch a careers page and extract schema.org JobPosting JSON-LD.
+ * Two modes: the listing embeds JobPostings inline (WordPress/Squarespace/teamtailor style),
+ * or we crawl up to 15 same-site job detail links and extract from each.
+ */
+async function fetchGeneric(name, url) {
+  const res = await fetchWithTimeout(url, 25000);
+  if (!res.ok) throw new Error(`careers-page ${name}: HTTP ${res.status}`);
+  const html = await res.text();
+  const jobs = extractJsonLdJobs(html, name);
+  if (jobs.length) return jobs;
+
+  const links = extractDetailLinks(html, url).slice(0, 15);
+  if (!links.length) throw new Error(`careers-page ${name}: no JobPosting JSON-LD and no candidate job links found`);
+  const details = await mapLimited(links, 6, async (link) => {
+    try {
+      const r = await fetchWithTimeout(link, 12000);
+      if (!r.ok) return [];
+      return extractJsonLdJobs(await r.text(), name);
+    } catch { return []; }
+  });
+  const all = details.flat();
+  if (!all.length) throw new Error(`careers-page ${name}: crawled ${links.length} linked pages, no JobPosting JSON-LD found`);
+  return all;
+}
 function extractJsonLdJobs(html, fallbackCompany) {
   const jobs = [];
   const re = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
@@ -141,13 +203,38 @@ function extractJsonLdJobs(html, fallbackCompany) {
   return jobs;
 }
 
-async function fetchGeneric(name, url) {
-  const res = await fetchWithTimeout(url, 25000);
-  if (!res.ok) throw new Error(`careers-page ${name}: HTTP ${res.status}`);
-  const html = await res.text();
-  const jobs = extractJsonLdJobs(html, name);
-  if (!jobs.length) throw new Error(`careers-page ${name}: no JobPosting JSON-LD found`);
-  return jobs;
+/* ---------- RemoteOK public API ---------- */
+const TECH_TAGS = new Set(['javascript','typescript','react','vue','angular','svelte','node','nodejs','python','java','golang','go','rust','php','ruby','rails','django','laravel','dotnet','.net','c++','devops','sre','frontend','front-end','backend','back-end','full-stack','fullstack','ios','android','flutter','react-native','qa','data-engineering','data-science','machine-learning','ml','ai','nlp','llm','cloud','aws','gcp','azure','kubernetes','docker','terraform','security','cybersecurity','blockchain','web3','solidity','scala','kotlin','swift','graphql','elasticsearch','microservices','emberjs','nextjs','clojure','elixir','erlang','haskell','perl','objective-c']);
+
+async function fetchRemoteOk() {
+  const res = await fetchWithTimeout('https://remoteok.com/api', 25000);
+  if (!res.ok) throw new Error(`remoteok: HTTP ${res.status}`);
+  const arr = await res.json();
+  const out = [];
+  for (const j of Array.isArray(arr) ? arr : []) {
+    if (!j || !j.position || !(j.url || j.slug)) continue; // first element is a legal notice
+    const tags = Array.isArray(j.tags) ? j.tags : [];
+    const low = tags.map((t) => String(t).toLowerCase());
+    if (low.includes('non tech')) continue; // board's own explicit marker
+    if (!low.some((t) => TECH_TAGS.has(t))) continue; // quality gate: tech-relevant only
+    const tagStr = tags.join(', ');
+    out.push({
+      uid: makeUid(j.company || 'remoteok', decodeEntities(j.position), j.url || `https://remoteok.com/remote-jobs/${j.slug}`),
+      company: decodeEntities(String(j.company || 'Unknown').trim()),
+      title: decodeEntities(String(j.position).trim()),
+      location: decodeEntities(String(j.location || 'Remote').trim()),
+      employment_type: j.type ? String(j.type).trim() : null,
+      url: j.url || `https://remoteok.com/remote-jobs/${j.slug}`,
+      description: stripHtml((j.description || '') + (tagStr ? `\n\nSkills: ${tagStr}` : '')),
+      salary: j.salary_min && j.salary_max ? `$${j.salary_min}–$${j.salary_max}` : null,
+      posted_at: j.date ? Date.parse(j.date) : (j.epoch ? j.epoch * 1000 : null),
+      source: 'remoteok',
+      source_board: 'remoteok',
+      raw: null
+    });
+  }
+  if (!out.length) throw new Error('remoteok: API returned no jobs');
+  return out;
 }
 
 /* ---------- dispatch ---------- */
@@ -155,7 +242,8 @@ async function fetchBoard(board) {
   if (board.kind === 'greenhouse') return fetchGreenhouse(board.slug);
   if (board.kind === 'lever') return fetchLever(board.slug);
   if (board.kind === 'careers-page') return fetchGeneric(board.label || board.slug, board.url);
+  if (board.kind === 'remoteok-api') return fetchRemoteOk();
   throw new Error(`unknown board kind: ${board.kind}`);
 }
 
-module.exports = { fetchBoard, stripHtml, makeUid, extractJsonLdJobs };
+module.exports = { fetchBoard, stripHtml, decodeEntities, makeUid, extractJsonLdJobs };

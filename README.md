@@ -10,7 +10,7 @@ Job boards like LinkedIn/Naukri index company postings hours to days after they 
 
 | Piece | What it does | Where |
 |---|---|---|
-| **Ingestion pipeline** | Pulls postings from Greenhouse & Lever public board APIs (8 boards seeded, add any slug/URL from the UI) + a generic scraper for careers pages embedding schema.org `JobPosting` JSON-LD. Runs on boot, then every 30 min. Dedupes by `sha1(company|title|url)`. | `server/sources.js`, `server/ingest.js` |
+| **Ingestion pipeline** | Pulls postings from company-hosted Greenhouse & Lever public board APIs (8 boards seeded — Postman, Stripe, Databricks, Canonical, GitLab, Meesho, CRED, Paytm) and a generic crawler for any careers page that embeds schema.org `JobPosting` JSON-LD (inline or on linked detail pages). Runs on boot, then every 30 min. Dedupes by `sha1(company|title|url)`. A RemoteOK adapter is included but **disabled by default** — its public feed is currently polluted with mis-tagged non-tech listings; re-enable from the Pipeline tab if you want it. | `server/sources.js`, `server/ingest.js` |
 | **Matching engine** | Deterministic, explainable, no API key: skill-dictionary extraction (≈250 skills), skill recall (55%) + precision (20%) + TF-IDF cosine text similarity (25%) → 0–100 score per job vs your CV. | `server/match.js` |
 | **Signals** | Estimated competition (first-seen age + direct-source), recruiter strictness (density of hard-requirement language), fit sensitivity. Labeled heuristics for prioritization — not insider data. | `server/match.js` |
 | **ATS check** | Resume formatting heuristics: contact info, sections, bullets, length, dates → 0–100 + fix tips. Keyword-gap list per job (what the posting wants that your CV lacks). | `server/match.js` |
@@ -30,6 +30,8 @@ npm start
 2. The **Jobs** feed now shows a match score on every posting; sort by *best match*.
 3. Set **Alerts** preferences and hit *Send test digest now*.
 4. Load the extension: `chrome://extensions` → Developer mode → *Load unpacked* → select `extension/`.
+
+To test whether an arbitrary careers page will work as a JSON-LD source, run `node scripts/probe.js` (edit the URL list) — it reports how many `JobPosting` blocks the page exposes.
 
 ### Optional environment (`.env` — copy `.env.example`)
 

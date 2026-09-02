@@ -14,14 +14,17 @@ const DEFAULT_BOARDS = [
   { kind: 'greenhouse', slug: 'gitlab', label: 'GitLab' },
   { kind: 'lever', slug: 'meesho', label: 'Meesho' },
   { kind: 'lever', slug: 'cred', label: 'CRED' },
-  { kind: 'lever', slug: 'paytm', label: 'Paytm' }
+  { kind: 'lever', slug: 'paytm', label: 'Paytm' },
+  // Disabled by default: RemoteOK's public API feed is currently polluted with
+  // mis-tagged non-tech listings. The adapter + filters remain available; re-enable from the Pipeline tab.
+  { kind: 'remoteok-api', slug: 'remoteok', label: 'RemoteOK (remote, public API)', enabled: 0 }
 ];
 
 function ensureBoardsSeeded() {
   const count = db.prepare('SELECT COUNT(*) AS n FROM boards').get().n;
   if (count === 0) {
-    const ins = db.prepare('INSERT OR IGNORE INTO boards (kind, slug, label, url, enabled) VALUES (?,?,?,?,1)');
-    const tx = db.transaction(() => { for (const b of DEFAULT_BOARDS) ins.run(b.kind, b.slug, b.label, null); });
+    const ins = db.prepare('INSERT OR IGNORE INTO boards (kind, slug, label, url, enabled) VALUES (?,?,?,?,?)');
+    const tx = db.transaction(() => { for (const b of DEFAULT_BOARDS) ins.run(b.kind, b.slug, b.label, null, b.enabled === 0 ? 0 : 1); });
     tx();
   }
 }

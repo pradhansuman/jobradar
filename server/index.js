@@ -158,9 +158,9 @@ app.get('/api/boards', (req, res) => {
 
 app.post('/api/boards', requireAdmin, async (req, res) => {
   const { kind, slug, url, label } = req.body || {};
-  if (!['greenhouse', 'lever', 'careers-page'].includes(kind)) return res.status(400).json({ error: 'kind must be greenhouse | lever | careers-page' });
+  if (!['greenhouse', 'lever', 'careers-page', 'remoteok-api'].includes(kind)) return res.status(400).json({ error: 'kind must be greenhouse | lever | careers-page | remoteok-api' });
   if (kind === 'careers-page' && !url) return res.status(400).json({ error: 'careers-page boards need a URL' });
-  if (kind !== 'careers-page' && !slug) return res.status(400).json({ error: 'slug required' });
+  if (kind !== 'careers-page' && kind !== 'remoteok-api' && !slug) return res.status(400).json({ error: 'slug required' });
   const board = { kind, slug: slug || label, label: label || slug, url: url || null };
   const { fetchBoard } = require('./sources');
   try { const jobs = await fetchBoard(board); if (!jobs.length) throw new Error('no jobs returned — check the slug/URL'); }

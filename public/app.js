@@ -102,7 +102,7 @@ function jobCard(j) {
     <div class="badges">
       <span class="badge fresh">first seen ${esc(timeAgo(j.first_seen_at))}</span>
       ${compBadge(j.ageHours, j.source !== 'board')}
-      <span class="badge src">${esc(j.source === 'greenhouse' ? 'Greenhouse' : j.source === 'lever' ? 'Lever' : 'Careers page')}</span>
+      <span class="badge src">${esc(j.source === 'greenhouse' ? 'Greenhouse' : j.source === 'lever' ? 'Lever' : j.source === 'remoteok' ? 'RemoteOK API' : 'Careers page')}</span>
       ${j.salary ? `<span class="badge">${esc(j.salary)}</span>` : ''}
     </div>
   </article>`;
