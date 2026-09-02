@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  body { width: 320px; font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0b0f17; color: #e8edf7; margin: 0; padding: 14px; }
+  h1 { font-size: 15px; margin: 0 0 10px; } h1 span { color: #22d3a5; }
+  label { display: block; color: #8fa0bf; font-size: 11px; margin: 8px 0 3px; }
+  input { width: 100%; box-sizing: border-box; background: #101624; color: #e8edf7; border: 1px solid #23304d; border-radius: 8px; padding: 7px 9px; font: inherit; outline: none; }
+  input:focus { border-color: #4f8cff; }
+  button { margin-top: 12px; width: 100%; padding: 10px; border-radius: 9px; border: none; background: #4f8cff; color: #fff; font-weight: 600; cursor: pointer; }
+  button:hover { filter: brightness(1.12); }
+  .saved { color: #22d3a5; font-size: 12px; margin-top: 8px; text-align: center; min-height: 16px; }
+  .hint { color: #8fa0bf; font-size: 11px; margin-top: 10px; }
+</style>
+</head>
+<body>
+  <h1><span>◈</span> JobRadar Autofill</h1>
+  <label>Full name</label><input id="p-name" placeholder="Priya Sharma">
+  <label>Email</label><input id="p-email" type="email" placeholder="priya@example.com">
+  <label>Phone</label><input id="p-phone" placeholder="+91 98765 43210">
+  <label>Location</label><input id="p-location" placeholder="Bengaluru, India">
+  <label>LinkedIn URL</label><input id="p-linkedin" placeholder="https://linkedin.com/in/…">
+  <label>Portfolio / GitHub</label><input id="p-portfolio" placeholder="https://github.com/…">
+  <button id="fill">Fill this page</button>
+  <div class="saved" id="saved"></div>
+  <p class="hint">Only empty fields are filled. Your profile stays in this browser's local storage — nothing is sent anywhere.</p>
+  <script src="popup.js"></script>
+</body>
+</html>

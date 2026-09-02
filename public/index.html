@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JobRadar — early discovery from company career pages</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="logo">◈</span> JobRadar <span class="tag">India · early discovery</span></div>
+  <nav class="nav">
+    <a href="#/jobs" data-nav="jobs">Jobs</a>
+    <a href="#/cv" data-nav="cv">CV Studio</a>
+    <a href="#/alerts" data-nav="alerts">Alerts</a>
+    <a href="#/pipeline" data-nav="pipeline">Pipeline</a>
+    <a href="#/about" data-nav="about">How it works</a>
+  </nav>
+</header>
+
+<main>
+  <!-- ============ JOBS ============ -->
+  <section id="view-jobs" class="view" hidden>
+    <div class="statrow" id="statrow"></div>
+    <div class="filters card">
+      <input id="f-q" type="search" placeholder="Search title, company, skills…" autocomplete="off">
+      <select id="f-source">
+        <option value="">All sources</option>
+        <option value="greenhouse">Greenhouse boards</option>
+        <option value="lever">Lever boards</option>
+        <option value="careers-page">Direct careers pages</option>
+      </select>
+      <select id="f-age">
+        <option value="">Any freshness</option>
+        <option value="24">First seen ≤ 24h</option>
+        <option value="72">First seen ≤ 72h</option>
+        <option value="168">First seen ≤ 7d</option>
+      </select>
+      <input id="f-loc" type="search" placeholder="Location (e.g. Bengaluru, Remote)" autocomplete="off">
+      <select id="f-sort">
+        <option value="fresh">Sort: freshest first</option>
+        <option value="match">Sort: best match</option>
+        <option value="company">Sort: company</option>
+      </select>
+    </div>
+    <div id="jobs-meta" class="meta"></div>
+    <div id="jobs-list" class="jobgrid"></div>
+    <div id="jobs-empty" class="empty" hidden>
+      <h3>No jobs match these filters</h3>
+      <p>Clear a filter, or run an ingest from the <a href="#/pipeline">Pipeline</a> tab. The first ingest runs automatically when the server starts with an empty database.</p>
+    </div>
+  </section>
+
+  <!-- ============ CV STUDIO ============ -->
+  <section id="view-cv" class="view" hidden>
+    <div class="split">
+      <div class="card">
+        <h2>Your CV</h2>
+        <p class="hint">Paste CV text (or load a .txt/.md file). Stored locally in this deployment — used to compute match scores, gaps and alerts.</p>
+        <input id="cv-name" type="text" placeholder="Label, e.g. SDE-2 resume v3">
+        <input id="cv-file" type="file" accept=".txt,.md,text/plain">
+        <textarea id="cv-text" rows="14" placeholder="Paste your resume text here…"></textarea>
+        <div class="row">
+          <button id="cv-save" class="primary">Analyze & save</button>
+          <button id="cv-clear" class="ghost">Clear</button>
+        </div>
+        <div id="cv-status" class="hint"></div>
+      </div>
+      <div class="card" id="cv-analysis">
+        <h2>ATS check</h2>
+        <div id="ats-result" class="empty-inline">Save a CV to see the formatting score and tips.</div>
+        <h2 class="mt">Skill profile</h2>
+        <div id="skills-result" class="empty-inline">Extracted skills will appear here.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ ALERTS ============ -->
+  <section id="view-alerts" class="view" hidden>
+    <div class="split">
+      <div class="card">
+        <h2>Alert preferences</h2>
+        <p class="hint">Checked when new jobs arrive (every ingest). Email needs <code>RESEND_API_KEY</code>; WhatsApp needs Meta Cloud API keys — see <a href="#/about">How it works</a>. Without keys, alerts stay queued in the outbox below.</p>
+        <label>Keywords (comma-separated, any match)</label>
+        <input id="al-keywords" type="text" placeholder="backend, python, product manager">
+        <label>Locations (comma-separated)</label>
+        <input id="al-locations" type="text" placeholder="Bengaluru, Remote, Delhi NCR">
+        <label>Minimum match score: <span id="al-minscore-val">0</span>%</label>
+        <input id="al-minscore" type="range" min="0" max="90" step="5" value="0">
+        <fieldset class="channels">
+          <legend>Channels</legend>
+          <label class="check"><input type="checkbox" id="al-email" checked> Email digest</label>
+          <label class="check"><input type="checkbox" id="al-whatsapp"> WhatsApp</label>
+        </fieldset>
+        <div class="row">
+          <button id="al-save" class="primary">Save preferences</button>
+          <button id="al-test" class="ghost">Send test digest now</button>
+        </div>
+        <div id="al-status" class="hint"></div>
+      </div>
+      <div class="card">
+        <h2>Outbox</h2>
+        <div id="outbox" class="outbox"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ PIPELINE ============ -->
+  <section id="view-pipeline" class="view" hidden>
+    <div class="split">
+      <div class="card">
+        <h2>Ingestion</h2>
+        <p class="hint">Pulls jobs from enabled boards (Greenhouse/Lever public APIs + JSON-LD careers pages). Runs on boot, then every interval. Manual trigger:</p>
+        <button id="ing-run" class="primary">Run ingest now</button>
+        <div id="ing-status" class="hint"></div>
+        <h2 class="mt">Recent runs</h2>
+        <div id="ing-runs" class="runs"></div>
+      </div>
+      <div class="card">
+        <h2>Boards</h2>
+        <div id="boards-list" class="boards"></div>
+        <h2 class="mt">Add a board</h2>
+        <div class="row wrap">
+          <select id="bd-kind">
+            <option value="greenhouse">Greenhouse slug</option>
+            <option value="lever">Lever slug</option>
+            <option value="careers-page">Careers page URL (JSON-LD)</option>
+          </select>
+          <input id="bd-slug" type="text" placeholder="slug (e.g. postman)">
+          <input id="bd-label" type="text" placeholder="Company label">
+          <button id="bd-add" class="primary">Verify & add</button>
+        </div>
+        <p class="hint">A careers-page URL is verified by fetching it and looking for <code>&lt;script type="application/ld+json"&gt; JobPosting</code> blocks. Invalid boards are rejected before saving.</p>
+        <div id="bd-status" class="hint"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ ABOUT ============ -->
+  <section id="view-about" class="view" hidden>
+    <div class="card prose">
+      <h2>How JobRadar works</h2>
+      <table class="kv">
+        <tr><td>1 · Discovery</td><td>Every 30 minutes the server pulls postings from company-hosted boards (Greenhouse & Lever public APIs) and arbitrary careers pages that embed schema.org <code>JobPosting</code> JSON-LD. These are the same pages recruiters publish to <em>first</em> — boards like LinkedIn/Naukri index them later, so first-seen timestamps here typically beat aggregators by hours to days.</td></tr>
+        <tr><td>2 · Matching</td><td>Your CV is tokenized and matched against each posting: skill-dictionary overlap (55%), skill precision (20%) and text similarity via TF-IDF cosine (25%) → a 0–100 score. Deterministic and explainable — no black box, no API key needed.</td></tr>
+        <tr><td>3 · Signals</td><td>Competition estimate (from first-seen age + direct-source status), recruiter strictness (density of hard-requirement language), fit sensitivity (how much the score depends on skills vs narrative). These are <strong>labeled heuristics</strong> to help you prioritize — not insider data.</td></tr>
+        <tr><td>4 · Alerts</td><td>New jobs are checked against your keyword/location/minimum-score preferences; matches are queued as email (Resend) and WhatsApp (Meta Cloud API) digests and flushed every minute.</td></tr>
+        <tr><td>5 · Apply fast</td><td>The companion browser extension autofills application forms from your saved profile — one click per portal. Load it unpacked from the <code>extension/</code> folder (see README).</td></tr>
+      </table>
+      <h3>Honest limitations</h3>
+      <ul>
+        <li>Scores and signals are estimates for prioritization — never a prediction of outcomes.</li>
+        <li>Salary data appears only when a source publishes it.</li>
+        <li>"Early" means earlier than job boards, not secret — recruiters see the same page.</li>
+        <li>Single-tenant MVP: no auth. Put it behind a reverse proxy or add auth before exposing publicly.</li>
+      </ul>
+      <h3>Extending it</h3>
+      <ul>
+        <li>Add boards from the Pipeline tab — any Greenhouse/Lever slug, any JSON-LD careers page.</li>
+        <li>Upgrade SQLite → Neon/Supabase Postgres for multi-user (README has the path).</li>
+        <li>Swap the deterministic matcher for an LLM rewrite step (kept out of core so the MVP runs key-free).</li>
+      </ul>
+    </div>
+  </section>
+</main>
+
+<!-- job detail modal -->
+<div id="modal" class="modal" hidden>
+  <div class="modal-card">
+    <button id="modal-close" class="iconbtn" aria-label="Close">✕</button>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+<footer class="foot">JobRadar MVP · early discovery from company career pages · <a href="https://github.com/pradhansuman/jobradar" target="_blank" rel="noopener">source</a></footer>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+{
+  "name": "jobradar",
+  "version": "0.1.0",
+  "description": "AI-powered early job discovery from company career pages — match scoring, signals, alerts, autofill extension.",
+  "type": "commonjs",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node server/index.js",
+    "ingest": "node server/ingest-cli.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.10.0",
+    "express": "^4.21.2"
+  },
+  "license": "MIT"
+}
