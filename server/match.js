@@ -148,4 +148,4 @@ function analyzeJobAgainstLatestCv(job) {
   };
 }
 
-module.exports = { SKILLS, tokenize, extractSkills, matchScore, jobSignals, keywordGap, atsCheck, analyzeJobAgainstLatestCv };
+module.exports = { SKILLS, STOP, tokenize, extractSkills, matchScore, jobSignals, keywordGap, atsCheck, analyzeJobAgainstLatestCv };

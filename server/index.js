@@ -4,10 +4,12 @@
  */
 const path = require('path');
 const express = require('express');
-const { db, now, latestCv, saveCv, saveAlertPrefs, getAlertPrefs } = require('./db');
+const { db, now, latestCv, activateCv, listCvs, deleteCv, saveCv, saveAlertPrefs, getAlertPrefs } = require('./db');
 const { runIngest, ensureBoardsSeeded, lastRun } = require('./ingest');
 const { extractSkills, matchScore, atsCheck, analyzeJobAgainstLatestCv, jobSignals } = require('./match');
 const { queueAlertsForNewJobs, flushOutbox } = require('./notify');
+const { parseResume } = require('./parse');
+const { buildTailored, renderTailored } = require('./tailor');
 
 const app = express();
 const PORT = process.env.PORT || 8787;
@@ -88,7 +90,7 @@ app.get('/api/jobs/:uid', (req, res) => {
 app.get('/api/cv', (req, res) => {
   const cv = latestCv();
   if (!cv) return res.json({ cv: null });
-  res.json({ cv: { id: cv.id, name: cv.name, created_at: cv.created_at, skills: cv.skills ? JSON.parse(cv.skills) : [], ats: cv.ats ? JSON.parse(cv.ats) : null, text_preview: cv.text.slice(0, 400) } });
+  res.json({ cv: { id: cv.id, name: cv.name, created_at: cv.created_at, skills: cv.skills ? JSON.parse(cv.skills) : [], ats: cv.ats ? JSON.parse(cv.ats) : null, text: cv.text } });
 });
 
 app.post('/api/cv', (req, res) => {
@@ -97,14 +99,32 @@ app.post('/api/cv', (req, res) => {
   const clean = String(text).slice(0, 60000);
   const skills = extractSkills(clean);
   const ats = atsCheck(clean);
+  const looksLikeResume = /[\w.+-]+@[\w-]+\.[\w.]+/.test(clean) && /(experience|education|skills|work history|employment)/i.test(clean);
+  const warning = looksLikeResume ? null : 'Heads up: this text does not look like a resume (no contact info / experience sections found). It is saved, but match quality will be poor until a real resume is active.';
   const id = saveCv(name || null, clean, JSON.stringify(skills), JSON.stringify(ats));
-  res.json({ id, skills, ats });
+  activateCv(id);
+  res.json({ id, skills, ats, warning });
+});
+
+app.get('/api/cv/list', (req, res) => {
+  res.json({ cvs: listCvs() });
+});
+
+app.post('/api/cv/activate/:id', (req, res) => {
+  const ok = activateCv(Number(req.params.id));
+  if (!ok) return res.status(404).json({ error: 'CV not found' });
+  res.json({ ok: true, active: Number(req.params.id) });
+});
+
+app.delete('/api/cv/:id', (req, res) => {
+  deleteCv(Number(req.params.id));
+  res.json({ ok: true });
 });
 
 /* ---------- alerts ---------- */
 app.get('/api/alerts', (req, res) => {
   const prefs = getAlertPrefs();
-  const outbox = db.prepare('SELECT id, channel, target, subject, status, error, created_at, sent_at FROM outbox ORDER BY id DESC LIMIT 30').all();
+  const outbox = db.prepare('SELECT id, channel, target, subject, substr(body,1,220) AS body, status, error, created_at, sent_at FROM outbox ORDER BY id DESC LIMIT 30').all();
   res.json({ prefs: prefs ? { keywords: prefs.keywords, locations: prefs.locations, min_score: prefs.min_score, channels: JSON.parse(prefs.channels || '[]') } : null, outbox });
 });
 
@@ -158,7 +178,7 @@ app.get('/api/boards', (req, res) => {
 
 app.post('/api/boards', requireAdmin, async (req, res) => {
   const { kind, slug, url, label } = req.body || {};
-  if (!['greenhouse', 'lever', 'careers-page', 'remoteok-api'].includes(kind)) return res.status(400).json({ error: 'kind must be greenhouse | lever | careers-page | remoteok-api' });
+  if (!['greenhouse', 'lever', 'careers-page', 'remoteok-api', 'smartrecruiters'].includes(kind)) return res.status(400).json({ error: 'kind must be greenhouse | lever | careers-page | smartrecruiters | remoteok-api' });
   if (kind === 'careers-page' && !url) return res.status(400).json({ error: 'careers-page boards need a URL' });
   if (kind !== 'careers-page' && kind !== 'remoteok-api' && !slug) return res.status(400).json({ error: 'slug required' });
   const board = { kind, slug: slug || label, label: label || slug, url: url || null };
@@ -172,6 +192,41 @@ app.post('/api/boards', requireAdmin, async (req, res) => {
 app.delete('/api/boards/:id', requireAdmin, (req, res) => {
   db.prepare('DELETE FROM boards WHERE id = ?').run(req.params.id);
   res.json({ ok: true });
+});
+
+/* ---------- resume file parsing (pdf/docx/doc/txt) ---------- */
+app.post('/api/cv/parse', async (req, res) => {
+  try {
+    const { filename, content_b64 } = req.body || {};
+    if (!filename || !content_b64) return res.status(400).json({ error: 'send filename and content_b64 (base64 file bytes)' });
+    const buf = Buffer.from(String(content_b64), 'base64');
+    const { text, warning } = await parseResume(filename, buf);
+    res.json({ text, warning });
+  } catch (e) { res.status(400).json({ error: String(e.message || e) }); }
+});
+
+/* ---------- per-job resume tailoring ---------- */
+app.post('/api/tailor', async (req, res) => {
+  try {
+    const { job_uid, include_skills = [], format = 'preview', cv_text } = req.body || {};
+    const row = db.prepare('SELECT * FROM jobs WHERE uid = ?').get(job_uid);
+    if (!row) return res.status(404).json({ error: 'job not found' });
+    let cv = latestCv();
+    let cvText = cv ? cv.text : null;
+    if (cv_text && String(cv_text).trim().length >= 80) cvText = String(cv_text).slice(0, 60000); // ad-hoc text without saving
+    if (!cvText) return res.status(400).json({ error: 'save a CV in CV Studio first (or pass cv_text)' });
+    const cvSkills = (cv && cvText === cv.text) ? (cv.skills ? JSON.parse(cv.skills) : extractSkills(cv.text)) : extractSkills(cvText);
+    const t = buildTailored({ cvText, cvSkills, job: row, includeSkills: include_skills });
+    const out = await renderTailored(t, String(format));
+    if (format === 'preview') {
+      return res.json({ tailored: t, preview_html: out.buf.toString('utf8'), job: t.job, score: t.score, missing: t.unclaimedGaps });
+    }
+    const safe = (s) => String(s || '').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').slice(0, 40) || 'resume';
+    const filename = `${safe(t.name)}-${safe(row.title)}.` + out.ext;
+    res.setHeader('content-type', out.mime);
+    res.setHeader('content-disposition', `attachment; filename="${filename}"`);
+    res.send(out.buf);
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 
 /* ---------- stats ---------- */

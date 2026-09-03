@@ -10,11 +10,12 @@ Job boards like LinkedIn/Naukri index company postings hours to days after they 
 
 | Piece | What it does | Where |
 |---|---|---|
-| **Ingestion pipeline** | Pulls postings from company-hosted Greenhouse & Lever public board APIs (8 boards seeded — Postman, Stripe, Databricks, Canonical, GitLab, Meesho, CRED, Paytm) and a generic crawler for any careers page that embeds schema.org `JobPosting` JSON-LD (inline or on linked detail pages). Runs on boot, then every 30 min. Dedupes by `sha1(company|title|url)`. A RemoteOK adapter is included but **disabled by default** — its public feed is currently polluted with mis-tagged non-tech listings; re-enable from the Pipeline tab if you want it. | `server/sources.js`, `server/ingest.js` |
+| **Ingestion pipeline** | Pulls postings from company-hosted ATS public APIs — **Greenhouse (14 boards), Lever (5), SmartRecruiters (6, incl. LinkedIn & SanDisk)** — 25 boards seeded for the India market (Postman, Stripe, Databricks, Meesho, CRED, Paytm, Rubrik, Netskope, MongoDB, HackerRank, InMobi, Glance, Twilio, Coinbase, FamPay, Netomi…) — plus a generic crawler for any careers page that embeds schema.org `JobPosting` JSON-LD (inline or on linked detail pages). Runs on boot, then every 30 min. Dedupes by `sha1(company|title|url)`. A RemoteOK adapter is included but **disabled by default** — its public feed is currently polluted with mis-tagged non-tech listings; re-enable from the Pipeline tab if you want it. | `server/sources.js`, `server/ingest.js` |
 | **Matching engine** | Deterministic, explainable, no API key: skill-dictionary extraction (≈250 skills), skill recall (55%) + precision (20%) + TF-IDF cosine text similarity (25%) → 0–100 score per job vs your CV. | `server/match.js` |
 | **Signals** | Estimated competition (first-seen age + direct-source), recruiter strictness (density of hard-requirement language), fit sensitivity. Labeled heuristics for prioritization — not insider data. | `server/match.js` |
 | **ATS check** | Resume formatting heuristics: contact info, sections, bullets, length, dates → 0–100 + fix tips. Keyword-gap list per job (what the posting wants that your CV lacks). | `server/match.js` |
-| **Alerts** | New jobs checked against keyword/location/minimum-score prefs → email digest (Resend) and/or WhatsApp (Meta Cloud API). Queued in an inspectable outbox; unconfigured channels are marked `skipped`, never silently lost. | `server/notify.js` |
+| **CV Studio v2** | Upload **PDF / DOCX / DOC / TXT** (drag & drop, parsed server-side with pure-JS extractors) or paste text. Then tailor per job: pick a posting from your top matches, see the skill gap report, **claim only the gaps you actually have** (the engine never invents experience — claimed additions are labeled and traced), review the live preview, and download as **PDF / DOCX / TXT** with the role, fit score and prioritized skills baked in. "Apply with this resume" downloads the PDF, saves an application brief for the autofill extension, and opens the portal. Multiple saved resumes with activate/delete, and a non-resume guard warns when the extracted text doesn't look like a CV. | `server/parse.js`, `server/tailor.js` |
+ New jobs checked against keyword/location/minimum-score prefs → email digest (Resend) and/or WhatsApp (Meta Cloud API). Queued in an inspectable outbox; unconfigured channels are marked `skipped`, never silently lost. | `server/notify.js` |
 | **Web UI** | Dark, responsive, no build step: live job feed with score rings & freshness badges, filters/search/sort-by-match, job detail with matched/missing skills + signals, CV Studio, alert prefs + outbox, pipeline admin (trigger ingest, verify & add boards). | `public/` |
 | **Autofill extension** | MV3 Chrome/Edge extension: saves your profile locally, fills empty fields on application forms (Greenhouse/Lever/generic) in one click. Nothing leaves the browser. | `extension/` |
 
@@ -23,10 +24,10 @@ Job boards like LinkedIn/Naukri index company postings hours to days after they 
 ```bash
 npm install
 npm start
-# → http://localhost:8787  (first boot auto-ingests ~2,000+ real postings)
+# → http://localhost:8787  (first boot auto-ingests ~3,500+ real postings)
 ```
 
-1. Open **CV Studio** → paste your resume text → save (skills + ATS score computed).
+1. Open **CV Studio** → drop in a **PDF/DOCX/DOC** resume (or paste text) → review the extracted text → *Analyze & save*. Then pick a target job, claim real gaps, preview the tailored resume and download it as PDF/DOCX/TXT.
 2. The **Jobs** feed now shows a match score on every posting; sort by *best match*.
 3. Set **Alerts** preferences and hit *Send test digest now*.
 4. Load the extension: `chrome://extensions` → Developer mode → *Load unpacked* → select `extension/`.
@@ -63,6 +64,7 @@ Any Node 18+ host works (single service, SQLite file storage):
 - Scores/signals are prioritization heuristics, not outcome predictions.
 - Salary shows only when a source publishes it.
 - Single-tenant, no auth — don't expose it raw to the internet.
+- Scanned-image PDFs (no text layer) can't be parsed — OCR is not implemented.
 - "Early" means earlier than job boards, not secret — recruiters see the same page.
 - Extension fills simple text fields; Workday-style multi-step flows are on the roadmap.
 

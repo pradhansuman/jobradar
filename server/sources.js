@@ -237,11 +237,43 @@ async function fetchRemoteOk() {
   return out;
 }
 
+/* ---------- SmartRecruiters public API ---------- */
+async function fetchSmartRecruiters(companyId) {
+  const base = `https://api.smartrecruiters.com/v1/companies/${encodeURIComponent(companyId)}/postings`;
+  const list = await (await fetchWithTimeout(`${base}?limit=100`, 20000)).json();
+  const items = (Array.isArray(list.content) ? list.content : []).slice(0, 40);
+  if (!items.length) throw new Error(`smartrecruiters ${companyId}: no postings`);
+  const details = await mapLimited(items, 8, async (it) => {
+    let desc = '';
+    try {
+      const d = await (await fetchWithTimeout(`${base}/${encodeURIComponent(it.id)}`, 12000)).json();
+      const sections = (d.jobAd && d.jobAd.sections) || [];
+      desc = sections.map((s) => `${s.title ? s.title + '\n' : ''}${stripHtml(s.text || '')}`).join('\n\n');
+    } catch { /* keep list-level data */ }
+    return { it, desc };
+  });
+  return details.map(({ it, desc }) => ({
+    uid: makeUid((it.company && it.company.name) || companyId, it.name, it.id),
+    company: decodeEntities(String((it.company && it.company.name) || companyId).trim()),
+    title: decodeEntities(String(it.name).trim()),
+    location: [it.location && it.location.city, it.location && it.location.country].filter(Boolean).join(', ') || null,
+    employment_type: it.typeOfEmployment && it.typeOfEmployment.id ? String(it.typeOfEmployment.id) : null,
+    url: `https://jobs.smartrecruiters.com/${encodeURIComponent(companyId)}/${encodeURIComponent(it.id)}`,
+    description: desc,
+    salary: null,
+    posted_at: it.releasedDate ? Date.parse(it.releasedDate) : null,
+    source: 'smartrecruiters',
+    source_board: companyId,
+    raw: null
+  }));
+}
+
 /* ---------- dispatch ---------- */
 async function fetchBoard(board) {
   if (board.kind === 'greenhouse') return fetchGreenhouse(board.slug);
   if (board.kind === 'lever') return fetchLever(board.slug);
   if (board.kind === 'careers-page') return fetchGeneric(board.label || board.slug, board.url);
+  if (board.kind === 'smartrecruiters') return fetchSmartRecruiters(board.slug);
   if (board.kind === 'remoteok-api') return fetchRemoteOk();
   throw new Error(`unknown board kind: ${board.kind}`);
 }

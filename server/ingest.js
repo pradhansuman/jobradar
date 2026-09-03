@@ -12,21 +12,36 @@ const DEFAULT_BOARDS = [
   { kind: 'greenhouse', slug: 'databricks', label: 'Databricks' },
   { kind: 'greenhouse', slug: 'canonical', label: 'Canonical' },
   { kind: 'greenhouse', slug: 'gitlab', label: 'GitLab' },
+  { kind: 'greenhouse', slug: 'rubrik', label: 'Rubrik' },
+  { kind: 'greenhouse', slug: 'netskope', label: 'Netskope' },
+  { kind: 'greenhouse', slug: 'mongodb', label: 'MongoDB' },
+  { kind: 'greenhouse', slug: 'sumologic', label: 'Sumo Logic' },
+  { kind: 'greenhouse', slug: 'hackerrank', label: 'HackerRank' },
+  { kind: 'greenhouse', slug: 'inmobi', label: 'InMobi' },
+  { kind: 'greenhouse', slug: 'glance', label: 'Glance' },
+  { kind: 'greenhouse', slug: 'twilio', label: 'Twilio' },
+  { kind: 'greenhouse', slug: 'coinbase', label: 'Coinbase' },
   { kind: 'lever', slug: 'meesho', label: 'Meesho' },
   { kind: 'lever', slug: 'cred', label: 'CRED' },
   { kind: 'lever', slug: 'paytm', label: 'Paytm' },
+  { kind: 'lever', slug: 'fampay', label: 'FamPay' },
+  { kind: 'lever', slug: 'netomi', label: 'Netomi' },
+  { kind: 'smartrecruiters', slug: 'LinkedIn3', label: 'LinkedIn' },
+  { kind: 'smartrecruiters', slug: 'Sandisk', label: 'SanDisk' },
+  { kind: 'smartrecruiters', slug: 'Xplor', label: 'Xplor' },
+  { kind: 'smartrecruiters', slug: 'Sutherland', label: 'Sutherland' },
+  { kind: 'smartrecruiters', slug: 'AllegisGlobalSolutions', label: 'Allegis Global Solutions' },
+  { kind: 'smartrecruiters', slug: 'VMaxIndiaPvtLtd', label: 'VMax India' },
   // Disabled by default: RemoteOK's public API feed is currently polluted with
   // mis-tagged non-tech listings. The adapter + filters remain available; re-enable from the Pipeline tab.
   { kind: 'remoteok-api', slug: 'remoteok', label: 'RemoteOK (remote, public API)', enabled: 0 }
 ];
 
 function ensureBoardsSeeded() {
-  const count = db.prepare('SELECT COUNT(*) AS n FROM boards').get().n;
-  if (count === 0) {
-    const ins = db.prepare('INSERT OR IGNORE INTO boards (kind, slug, label, url, enabled) VALUES (?,?,?,?,?)');
-    const tx = db.transaction(() => { for (const b of DEFAULT_BOARDS) ins.run(b.kind, b.slug, b.label, null, b.enabled === 0 ? 0 : 1); });
-    tx();
-  }
+  // idempotent: inserts missing defaults, never clobbers user edits (enabled state preserved)
+  const ins = db.prepare('INSERT OR IGNORE INTO boards (kind, slug, label, url, enabled) VALUES (?,?,?,?,?)');
+  const tx = db.transaction(() => { for (const b of DEFAULT_BOARDS) ins.run(b.kind, b.slug, b.label, null, b.enabled === 0 ? 0 : 1); });
+  tx();
 }
 
 async function runIngest() {

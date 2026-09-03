@@ -13,8 +13,13 @@
     "node": ">=18"
   },
   "dependencies": {
+    "adm-zip": "^0.6.0",
     "better-sqlite3": "^11.10.0",
-    "express": "^4.21.2"
+    "docx": "^9.7.1",
+    "express": "^4.21.2",
+    "pdf-parse": "^2.4.5",
+    "pdfkit": "^0.20.2",
+    "word-extractor": "^1.0.4"
   },
   "license": "MIT"
 }

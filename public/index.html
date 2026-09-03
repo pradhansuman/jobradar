@@ -29,6 +29,7 @@
         <option value="greenhouse">Greenhouse boards</option>
         <option value="lever">Lever boards</option>
         <option value="careers-page">Direct careers pages</option>
+        <option value="smartrecruiters">SmartRecruiters boards</option>
         <option value="remoteok">RemoteOK (public API)</option>
       </select>
       <select id="f-age">
@@ -46,6 +47,7 @@
     </div>
     <div id="jobs-meta" class="meta"></div>
     <div id="jobs-list" class="jobgrid"></div>
+    <div class="center"><button id="jobs-more" class="ghost" hidden>Load more jobs</button></div>
     <div id="jobs-empty" class="empty" hidden>
       <h3>No jobs match these filters</h3>
       <p>Clear a filter, or run an ingest from the <a href="#/pipeline">Pipeline</a> tab. The first ingest runs automatically when the server starts with an empty database.</p>
@@ -55,23 +57,55 @@
   <!-- ============ CV STUDIO ============ -->
   <section id="view-cv" class="view" hidden>
     <div class="split">
-      <div class="card">
-        <h2>Your CV</h2>
-        <p class="hint">Paste CV text (or load a .txt/.md file). Stored locally in this deployment — used to compute match scores, gaps and alerts.</p>
-        <input id="cv-name" type="text" placeholder="Label, e.g. SDE-2 resume v3">
-        <input id="cv-file" type="file" accept=".txt,.md,text/plain">
-        <textarea id="cv-text" rows="14" placeholder="Paste your resume text here…"></textarea>
-        <div class="row">
-          <button id="cv-save" class="primary">Analyze & save</button>
-          <button id="cv-clear" class="ghost">Clear</button>
+      <div>
+        <div class="card" id="cv-card">
+          <h2>Your CV</h2>
+          <p class="hint">Upload <b>PDF, DOCX, DOC or TXT</b> — text is extracted for you and stays editable below. Or paste directly.</p>
+          <div id="drop-zone" class="dropzone" tabindex="0" role="button" aria-label="Upload resume file">
+            <b>Drop your resume here</b> or click to choose<br>
+            <span class="hint">.pdf · .docx · .doc · .txt · .md — max 8 MB, parsed locally by this server</span>
+          </div>
+          <input id="cv-file" type="file" accept=".pdf,.docx,.doc,.txt,.md" hidden>
+          <input id="cv-name" type="text" placeholder="Label, e.g. SDE-2 backend v3">
+          <textarea id="cv-text" rows="12" placeholder="…or paste your resume text here"></textarea>
+          <div class="row">
+            <button id="cv-save" class="primary">Analyze & save</button>
+            <button id="cv-clear" class="ghost">Clear</button>
+          </div>
+          <div id="cv-status" class="hint"></div>
+          <h2 class="mt">Saved resumes</h2>
+          <div id="cv-history" class="boards"></div>
         </div>
-        <div id="cv-status" class="hint"></div>
+        <div class="card mt8" id="tailor-card">
+          <h2>Tailor for a job</h2>
+          <p class="hint">Pick a posting, review the skill gaps, claim only the ones you actually have, then preview and download a tailored resume. The engine never invents experience — you confirm every addition.</p>
+          <label>Target job (top matches first)</label>
+          <input id="tl-filter" type="search" placeholder="Filter list by title or company…" autocomplete="off">
+          <select id="tl-job"></select>
+          <div id="tl-missing" class="pillset mt8"></div>
+          <div class="row wrap">
+            <button id="tl-generate" class="primary">Generate preview</button>
+            <button id="tl-pdf" class="ghost" disabled>Download PDF</button>
+            <button id="tl-docx" class="ghost" disabled>Download DOCX</button>
+            <button id="tl-txt" class="ghost" disabled>Download TXT</button>
+          </div>
+          <div class="row wrap">
+            <button id="tl-apply" class="primary" disabled>Apply with this resume ↗</button>
+          </div>
+          <div id="tl-status" class="hint"></div>
+        </div>
       </div>
-      <div class="card" id="cv-analysis">
-        <h2>ATS check</h2>
-        <div id="ats-result" class="empty-inline">Save a CV to see the formatting score and tips.</div>
-        <h2 class="mt">Skill profile</h2>
-        <div id="skills-result" class="empty-inline">Extracted skills will appear here.</div>
+      <div>
+        <div class="card" id="cv-analysis">
+          <h2>ATS check</h2>
+          <div id="ats-result" class="empty-inline">Save a CV to see the formatting score and tips.</div>
+          <h2 class="mt">Skill profile</h2>
+          <div id="skills-result" class="empty-inline">Extracted skills will appear here.</div>
+        </div>
+        <div class="card mt8">
+          <h2>Tailored resume preview</h2>
+          <div id="tl-preview" class="pv empty-inline">Generate a preview to review the tailored resume here — nothing is invented; additions are marked and traced to your confirmation.</div>
+        </div>
       </div>
     </div>
   </section>
@@ -126,6 +160,7 @@
             <option value="greenhouse">Greenhouse slug</option>
             <option value="lever">Lever slug</option>
             <option value="careers-page">Careers page URL (JSON-LD)</option>
+            <option value="smartrecruiters">SmartRecruiters company ID</option>
             <option value="remoteok-api">RemoteOK API (no config)</option>
           </select>
           <input id="bd-slug" type="text" placeholder="slug (e.g. postman)">

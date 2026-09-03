@@ -111,7 +111,30 @@ function seedBoards(list) {
 }
 
 function latestCv() {
-  return db.prepare('SELECT * FROM cvs ORDER BY id DESC LIMIT 1').get() || null;
+  return db.prepare('SELECT * FROM cvs ORDER BY active DESC, id DESC LIMIT 1').get() || null;
+}
+
+function activateCv(id) {
+  const tx = db.transaction(() => {
+    db.prepare('UPDATE cvs SET active = 0').run();
+    db.prepare('UPDATE cvs SET active = 1 WHERE id = ?').run(id);
+  });
+  tx();
+  return db.prepare('SELECT id FROM cvs WHERE id = ? AND active = 1').get(id);
+}
+
+function listCvs() {
+  return db.prepare('SELECT id, name, active, length(text) AS chars, created_at FROM cvs ORDER BY active DESC, id DESC').all();
+}
+
+function deleteCv(id) {
+  const wasActive = db.prepare('SELECT active FROM cvs WHERE id = ?').get(id);
+  db.prepare('DELETE FROM cvs WHERE id = ?').run(id);
+  if (wasActive && wasActive.active) {
+    const next = db.prepare('SELECT id FROM cvs ORDER BY id DESC LIMIT 1').get();
+    if (next) activateCv(next.id);
+  }
+  return true;
 }
 
 function saveCv(name, text, skills, ats) {
@@ -136,4 +159,4 @@ function getAlertPrefs() {
   return db.prepare('SELECT * FROM alert_prefs ORDER BY id DESC LIMIT 1').get() || null;
 }
 
-module.exports = { db, now, upsertJob, seedBoards, latestCv, saveCv, saveAlertPrefs, getAlertPrefs };
+module.exports = { db, now, upsertJob, seedBoards, latestCv, activateCv, listCvs, deleteCv, saveCv, saveAlertPrefs, getAlertPrefs };

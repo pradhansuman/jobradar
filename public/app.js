@@ -56,7 +56,7 @@ function route() {
   views.forEach((x) => { $(`#view-${x}`).hidden = x !== v; });
   document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === v));
   if (v === 'jobs') loadStats(), loadJobs();
-  if (v === 'cv') loadCv();
+  if (v === 'cv') loadCv(), loadTailorJobs();
   if (v === 'alerts') loadAlerts();
   if (v === 'pipeline') loadPipeline();
 }
@@ -68,11 +68,12 @@ let debounceT = null;
 let jobCache = [];
 
 function bindFilters() {
-  $('#f-q').addEventListener('input', (e) => { filters.q = e.target.value; clearTimeout(debounceT); debounceT = setTimeout(loadJobs, 300); });
-  $('#f-loc').addEventListener('input', (e) => { filters.loc = e.target.value; clearTimeout(debounceT); debounceT = setTimeout(loadJobs, 300); });
-  $('#f-source').addEventListener('change', (e) => { filters.source = e.target.value; loadJobs(); });
-  $('#f-age').addEventListener('change', (e) => { filters.age = e.target.value; loadJobs(); });
-  $('#f-sort').addEventListener('change', (e) => { filters.sort = e.target.value; loadJobs(); });
+  $('#f-q').addEventListener('input', (e) => { filters.q = e.target.value; loadJobs.offset = 0; clearTimeout(debounceT); debounceT = setTimeout(loadJobs, 300); });
+  $('#f-loc').addEventListener('input', (e) => { filters.loc = e.target.value; loadJobs.offset = 0; clearTimeout(debounceT); debounceT = setTimeout(loadJobs, 300); });
+  $('#f-source').addEventListener('change', (e) => { filters.source = e.target.value; loadJobs.offset = 0; loadJobs(); });
+  $('#f-age').addEventListener('change', (e) => { filters.age = e.target.value; loadJobs.offset = 0; loadJobs(); });
+  $('#f-sort').addEventListener('change', (e) => { filters.sort = e.target.value; loadJobs.offset = 0; loadJobs(); });
+  $('#jobs-more').addEventListener('click', () => { loadJobs.offset = (loadJobs.offset || 0) + 60; loadJobs(); });
 }
 
 async function loadStats() {
@@ -102,7 +103,7 @@ function jobCard(j) {
     <div class="badges">
       <span class="badge fresh">first seen ${esc(timeAgo(j.first_seen_at))}</span>
       ${compBadge(j.ageHours, j.source !== 'board')}
-      <span class="badge src">${esc(j.source === 'greenhouse' ? 'Greenhouse' : j.source === 'lever' ? 'Lever' : j.source === 'remoteok' ? 'RemoteOK API' : 'Careers page')}</span>
+      <span class="badge src">${esc(j.source === 'greenhouse' ? 'Greenhouse' : j.source === 'lever' ? 'Lever' : j.source === 'smartrecruiters' ? 'SmartRecruiters' : j.source === 'remoteok' ? 'RemoteOK API' : 'Careers page')}</span>
       ${j.salary ? `<span class="badge">${esc(j.salary)}</span>` : ''}
     </div>
   </article>`;
@@ -110,7 +111,7 @@ function jobCard(j) {
 
 async function loadJobs() {
   const list = $('#jobs-list');
-  list.innerHTML = '<div class="empty">Loading jobs…</div>';
+  if (!loadJobs.offset) { list.innerHTML = '<div class="empty">Loading jobs…</div>'; }
   $('#jobs-empty').hidden = true;
   try {
     const p = new URLSearchParams();
@@ -119,17 +120,21 @@ async function loadJobs() {
     if (filters.source) p.set('source', filters.source);
     if (filters.age) p.set('max_age_h', filters.age);
     p.set('sort', filters.sort);
-    p.set('limit', '120');
+    p.set('limit', '60');
+    p.set('offset', String(loadJobs.offset || 0));
     const data = await api(`/api/jobs?${p}`);
-    jobCache = data.jobs;
-    $('#jobs-meta').textContent = `${data.total} posting${data.total === 1 ? '' : 's'}${data.hasCv ? ' · scored against your latest CV' : ' · save a CV to see match scores'}`;
-    if (!data.jobs.length) { list.innerHTML = ''; $('#jobs-empty').hidden = false; return; }
-    list.innerHTML = data.jobs.map(jobCard).join('');
-    list.querySelectorAll('.job').forEach((el) => el.addEventListener('click', () => openJob(el.dataset.uid)));
+    jobCache = loadJobs.offset ? jobCache.concat(data.jobs) : data.jobs;
+    $('#jobs-meta').textContent = `Showing ${jobCache.length} of ${data.total} posting${data.total === 1 ? '' : 's'}${data.hasCv ? ' · scored against your latest CV' : ' · save a CV to see match scores'}`;
+    $('#jobs-more').hidden = jobCache.length >= data.total;
+    const frag = data.jobs.map(jobCard).join('');
+    if (loadJobs.offset) list.insertAdjacentHTML('beforeend', frag);
+    else list.innerHTML = frag;
+    list.querySelectorAll('.job').forEach((el) => { if (!el.dataset.bound) { el.dataset.bound = '1'; el.addEventListener('click', () => openJob(el.dataset.uid)); } });
   } catch (e) {
     list.innerHTML = `<div class="empty"><h3>Couldn't load jobs</h3><p>${esc(e.message)} — is the server running?</p></div>`;
   }
 }
+loadJobs.offset = 0;
 
 async function openJob(uid) {
   try {
@@ -152,10 +157,17 @@ async function openJob(uid) {
       </div>
       <div class="modal-actions">
         <a href="${esc(job.url)}" target="_blank" rel="noopener"><button class="primary">Apply on ${esc(job.company)} careers page ↗</button></a>
+        <button class="primary" id="tailor-this">Tailor my resume for this job</button>
         <button class="ghost" id="copy-job">Copy details for the autofill extension</button>
       </div>
       <div class="desc">${esc(description)}</div>`;
     $('#modal').hidden = false;
+    $('#tailor-this').addEventListener('click', () => {
+      localStorage.setItem('jobradar.tailorJob', job.uid);
+      location.hash = '#/cv';
+      $('#modal').hidden = true;
+      toast('Job preselected in CV Studio — review the gaps and generate.');
+    });
     $('#copy-job').addEventListener('click', () => {
       localStorage.setItem('jobradar.apply', JSON.stringify({ title: job.title, company: job.company, url: job.url, matched: a.matchedSkills || [], missing: a.missingSkills || [] }));
       toast('Job details copied for the extension profile.');
@@ -170,12 +182,34 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape') $('#modal'
 async function loadCv() {
   try {
     const { cv } = await api('/api/cv');
-    if (!cv) return;
-    if (!$('#cv-text').value) $('#cv-text').value = cv.text_preview + (cv.text_preview.length >= 400 ? '…' : '');
-    if (!$('#cv-name').value) $('#cv-name').value = cv.name || '';
-    renderAts(cv.ats);
-    renderSkills(cv.skills);
-    $('#cv-status').textContent = `Loaded CV “${cv.name || 'untitled'}” saved ${timeAgo(cv.created_at)}.`;
+    if (cv) {
+      if (!$('#cv-text').value) $('#cv-text').value = cv.text || '';
+      if (!$('#cv-name').value) $('#cv-name').value = cv.name || '';
+      renderAts(cv.ats);
+      renderSkills(cv.skills);
+      $('#cv-status').textContent = `Active CV “${cv.name || 'untitled'}” saved ${timeAgo(cv.created_at)}.`;
+    }
+    const hist = await api('/api/cv/list');
+    $('#cv-history').innerHTML = hist.cvs.length ? hist.cvs.map((c) => `
+      <div class="board">
+        <span>#${c.id} <b>${esc(c.name || 'untitled')}</b> <span class="n">· ${c.chars} chars · saved ${esc(timeAgo(c.created_at))}</span></span>
+        <span>
+          ${c.active ? '<span class="badge fresh">active</span> ' : `<button class="ghost cv-use" data-id="${c.id}">Use</button> `}
+          <button class="ghost cv-del" data-id="${c.id}" title="Delete">✕</button>
+        </span>
+      </div>`).join('') : '<div class="empty-inline">No saved resumes yet.</div>';
+    $('#cv-history').querySelectorAll('.cv-use').forEach((b) => b.addEventListener('click', async () => {
+      await api('/api/cv/activate/' + b.dataset.id, { method: 'POST' });
+      $('#cv-text').value = ''; $('#cv-name').value = '';
+      loadCv(); loadStats(); loadTailorJobs();
+      toast('CV activated.');
+    }));
+    $('#cv-history').querySelectorAll('.cv-del').forEach((b) => b.addEventListener('click', async () => {
+      await api('/api/cv/' + b.dataset.id, { method: 'DELETE' });
+      $('#cv-text').value = ''; $('#cv-name').value = ''; $('#cv-status').textContent = '';
+      loadCv(); loadStats(); loadTailorJobs();
+      toast('CV deleted.');
+    }));
   } catch { /* first run */ }
 }
 
@@ -208,12 +242,129 @@ $('#cv-save').addEventListener('click', async () => {
 
 $('#cv-clear').addEventListener('click', () => { $('#cv-text').value = ''; $('#cv-name').value = ''; $('#cv-file').value = ''; $('#cv-status').textContent = ''; $('#ats-result').innerHTML = '<div class="empty-inline">Save a CV to see the formatting score and tips.</div>'; $('#skills-result').innerHTML = '<div class="empty-inline">Extracted skills will appear here.</div>'; });
 
-$('#cv-file').addEventListener('change', (e) => {
-  const f = e.target.files && e.target.files[0];
-  if (!f) return;
-  const reader = new FileReader();
-  reader.onload = () => { $('#cv-text').value = String(reader.result || ''); if (!$('#cv-name').value) $('#cv-name').value = f.name.replace(/\.(txt|md)$/i, ''); };
-  reader.readAsText(f);
+/* file → base64 → server-side parse (pdf/docx/doc/txt) */
+async function parseFile(file) {
+  if (!file) return;
+  if (file.size > 8 * 1024 * 1024) return toast('File too large — max 8 MB.', true);
+  $('#cv-status').textContent = `Parsing ${file.name}…`;
+  const b64 = await new Promise((resolve) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(',')[1]);
+    r.readAsDataURL(file);
+  });
+  try {
+    const { text, warning } = await api('/api/cv/parse', { method: 'POST', body: { filename: file.name, content_b64: b64 } });
+    $('#cv-text').value = text;
+    if (!$('#cv-name').value) $('#cv-name').value = file.name.replace(/\.(pdf|docx|doc|txt|md)$/i, '');
+    $('#cv-status').textContent = warning || `Parsed ${file.name} — review the text, then Analyze & save.`;
+    if (warning) toast(warning, true);
+    else toast('Resume parsed. Review the extracted text and save.');
+  } catch (e) {
+    $('#cv-status').textContent = e.message;
+    toast(e.message, true);
+  }
+}
+
+const dz = $('#drop-zone');
+dz.addEventListener('click', () => $('#cv-file').click());
+dz.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('#cv-file').click(); } });
+dz.addEventListener('dragover', (e) => { e.preventDefault(); dz.classList.add('drag'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
+dz.addEventListener('drop', (e) => { e.preventDefault(); dz.classList.remove('drag'); parseFile(e.dataTransfer.files && e.dataTransfer.files[0]); });
+$('#cv-file').addEventListener('change', (e) => parseFile(e.target.files && e.target.files[0]));
+
+/* ---------- tailor for a job ---------- */
+let tailorState = { jobUid: null, include: [], missing: [], lastBrief: null };
+
+async function loadTailorJobs() {
+  try {
+    const data = await api('/api/jobs?sort=match&limit=40');
+    if (!data.hasCv) { $('#tl-status').textContent = 'Save a CV first — then tailor for any posting.'; return; }
+    tailorState.allJobs = data.jobs;
+    renderJobOptions('');
+    const handoff = localStorage.getItem('jobradar.tailorJob');
+    if (handoff && data.jobs.some((j) => j.uid === handoff)) {
+      $('#tl-job').value = handoff;
+      localStorage.removeItem('jobradar.tailorJob');
+      $('#tl-status').textContent = 'Job preselected from the posting you opened — review the gaps below.';
+    }
+    await refreshMissing();
+  } catch { /* needs CV */ }
+}
+
+function renderJobOptions(filter) {
+  const f = (filter || '').toLowerCase();
+  const jobs = (tailorState.allJobs || []).filter((j) => !f || (j.title + ' ' + j.company).toLowerCase().includes(f));
+  $('#tl-job').innerHTML = jobs.map((j) => `<option value="${esc(j.uid)}">${esc(j.match_score + '% · ' + j.title + ' — ' + j.company)}</option>`).join('') || '<option value="">(no jobs match that filter)</option>';
+  $('#tl-job').dispatchEvent(new Event('change'));
+}
+
+async function refreshMissing() {
+  tailorState.jobUid = $('#tl-job').value;
+  tailorState.include = [];
+  $('#tl-pdf').disabled = $('#tl-docx').disabled = $('#tl-txt').disabled = $('#tl-apply').disabled = true;
+  $('#tl-preview').innerHTML = 'Generate a preview to review the tailored resume here.';
+  $('#tl-missing').innerHTML = '<span class="hint">Checking skill gaps for this posting…</span>';
+  if (!tailorState.jobUid) return;
+  try {
+    const { analysis } = await api('/api/jobs/' + encodeURIComponent(tailorState.jobUid));
+    tailorState.missing = (analysis && analysis.missingSkills) || [];
+    $('#tl-missing').innerHTML = tailorState.missing.length
+      ? tailorState.missing.map((s) => `<span class="pill gapchip" data-skill="${esc(s)}" title="Click to claim — only add skills you actually have">+ ${esc(s)}</span>`).join('')
+      : '<span class="hint">No gaps — your CV covers every skill this posting names.</span>';
+    $('#tl-missing').querySelectorAll('.gapchip').forEach((el) => el.addEventListener('click', () => {
+      const s = el.dataset.skill;
+      if (tailorState.include.includes(s)) { tailorState.include = tailorState.include.filter((x) => x !== s); el.classList.remove('claimed'); el.textContent = '+ ' + s; }
+      else { tailorState.include.push(s); el.classList.add('claimed'); el.textContent = '✓ ' + s; }
+    }));
+  } catch (e) { $('#tl-missing').innerHTML = `<span class="hint">${esc(e.message)}</span>`; }
+}
+
+$('#tl-job').addEventListener('change', refreshMissing);
+$('#tl-filter') && $('#tl-filter').addEventListener('input', (e) => {
+  clearTimeout(window.__tlDebounce); window.__tlDebounce = setTimeout(() => renderJobOptions(e.target.value), 250);
+});
+
+$('#tl-generate').addEventListener('click', async () => {
+  if (!$('#tl-job').value) return toast('Save a CV first.', true);
+  $('#tl-generate').disabled = true;
+  $('#tl-status').textContent = 'Building tailored resume…';
+  try {
+    const r = await api('/api/tailor', { method: 'POST', body: { job_uid: $('#tl-job').value, include_skills: tailorState.include, format: 'preview' } });
+    $('#tl-preview').innerHTML = `<div class="pv">${r.preview_html}</div>`;
+    $('#tl-pdf').disabled = $('#tl-docx').disabled = $('#tl-txt').disabled = $('#tl-apply').disabled = false;
+    $('#tl-status').textContent = `Fit ${r.score}% · ${r.tailored.coreSkills.length} core skills matched · ${r.missing.length} gaps left unclaimed.`;
+    tailorState.lastBrief = { title: r.job.title, company: r.job.company, url: r.job.url, matched: r.tailored.coreSkills, missing: r.missing };
+    toast('Preview ready — review, then download or apply.');
+  } catch (e) { $('#tl-status').textContent = e.message; toast(e.message, true); }
+  $('#tl-generate').disabled = false;
+});
+
+async function downloadTailored(format) {
+  try {
+    const res = await fetch('/api/tailor', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ job_uid: $('#tl-job').value, include_skills: tailorState.include, format }) });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'HTTP ' + res.status);
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    const fn = (res.headers.get('content-disposition') || '').match(/filename="([^"]+)"/);
+    a.download = fn ? fn[1] : `tailored-resume.${format}`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast(`Tailored resume downloaded as ${format.toUpperCase()}.`);
+  } catch (e) { toast(e.message, true); }
+}
+$('#tl-pdf').addEventListener('click', () => downloadTailored('pdf'));
+$('#tl-docx').addEventListener('click', () => downloadTailored('docx'));
+$('#tl-txt').addEventListener('click', () => downloadTailored('txt'));
+
+$('#tl-apply').addEventListener('click', async () => {
+  await downloadTailored('pdf');
+  if (tailorState.lastBrief) {
+    localStorage.setItem('jobradar.apply', JSON.stringify(tailorState.lastBrief));
+    window.open(tailorState.lastBrief.url, '_blank', 'noopener');
+    toast('Application package ready: resume downloaded, brief saved for the autofill extension, portal opened.');
+  }
 });
 
 /* ---------- alerts ---------- */
