@@ -331,10 +331,16 @@ $('#tl-generate').addEventListener('click', async () => {
   $('#tl-status').textContent = 'Building tailored resume…';
   try {
     const r = await api('/api/tailor', { method: 'POST', body: { job_uid: $('#tl-job').value, include_skills: tailorState.include, format: 'preview' } });
-    $('#tl-preview').innerHTML = `<div class="pv">${r.preview_html}</div>`;
+    $('#tl-preview').innerHTML = `<div class="pv">${r.preview_html}</div>
+      <div class="pv-meta">
+        <span class="badge src">Fit ${r.meta.score}%</span>
+        <span class="badge">${r.meta.matchedCount} of ${r.meta.jobSkillsCount} posting skills matched</span>
+        <span class="hint">What changed: ${esc(r.meta.changes.join(' · '))}</span>
+        ${r.meta.unclaimedGaps.length ? `<span class="hint">Unclaimed gaps: ${esc(r.meta.unclaimedGaps.join(', '))}</span>` : ''}
+      </div>`;
     $('#tl-pdf').disabled = $('#tl-docx').disabled = $('#tl-txt').disabled = $('#tl-apply').disabled = false;
-    $('#tl-status').textContent = `Fit ${r.score}% · ${r.tailored.coreSkills.length} core skills matched · ${r.missing.length} gaps left unclaimed.`;
-    tailorState.lastBrief = { title: r.job.title, company: r.job.company, url: r.job.url, matched: r.tailored.coreSkills, missing: r.missing };
+    $('#tl-status').textContent = 'Preview shows exactly what downloads — fit score and change trace stay out of the document.';
+    tailorState.lastBrief = { title: r.job.title, company: r.job.company, url: r.job.url, matched: [], missing: r.meta.unclaimedGaps };
     toast('Preview ready — review, then download or apply.');
   } catch (e) { $('#tl-status').textContent = e.message; toast(e.message, true); }
   $('#tl-generate').disabled = false;

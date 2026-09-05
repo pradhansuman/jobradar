@@ -219,7 +219,7 @@ app.post('/api/tailor', async (req, res) => {
     const t = buildTailored({ cvText, cvSkills, job: row, includeSkills: include_skills });
     const out = await renderTailored(t, String(format));
     if (format === 'preview') {
-      return res.json({ tailored: t, preview_html: out.buf.toString('utf8'), job: t.job, score: t.score, missing: t.unclaimedGaps });
+      return res.json({ preview_html: out.buf.toString('utf8'), meta: t.meta, job: t.job });
     }
     const safe = (s) => String(s || '').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').slice(0, 40) || 'resume';
     const filename = `${safe(t.name)}-${safe(row.title)}.` + out.ext;

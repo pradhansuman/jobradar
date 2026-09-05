@@ -90,6 +90,9 @@ button.ghost { background: transparent; }
 .pv-h { font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: .8px; color: var(--accent2); margin: 14px 0 4px; }
 .pv-t { font-size: 13.5px; color: #cdd8ec; }
 .pv-body { white-space: pre-wrap; font-size: 12.5px; line-height: 1.5; color: #cdd8ec; font-family: inherit; margin: 0; }
+.pv-headline { color: var(--accent); font-size: 13px; font-style: italic; margin: 2px 0 4px; }
+.pv-p { margin: 0 0 7px; font-size: 12.5px; line-height: 1.55; color: #cdd8ec; }
+.pv-meta { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .empty h3 { color: var(--text); margin: 0 0 6px; }
 .empty-inline { color: var(--muted); font-size: 13px; padding: 8px 0; }
 
